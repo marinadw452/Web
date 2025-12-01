@@ -1,16 +1,14 @@
 <?php
+// config.php ← أضمن كود للربط مع PostgreSQL في Railway 2025
 
 try {
     $pdo = new PDO(
-        "pgsql:host=" . getenv('PGHOST') .
-        ";port=" . getenv('PGPORT') .
-        ";dbname=" . getenv('PGDATABASE'),
-        getenv('PGUSER'),
-        getenv('PGPASSWORD'),
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]
+        "pgsql:host=" . getenv("PGHOST") .
+        ";port=" . getenv("PGPORT") .
+        ";dbname=" . getenv("PGDATABASE"),
+        getenv("PGUSER"),
+        getenv("PGPASSWORD"),
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
     // إنشاء جدول المستخدمين تلقائيًا
@@ -22,11 +20,8 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // رسالة اختبار (احذفها بعدين إذا تبي)
-    // echo "<small style='color:green'>تم الربط بنجاح باستخدام Shared Variables</small>";
-
 } catch (Exception $e) {
-    die("فشل الاتصال: " . $e->getMessage());
+    die("فشل الاتصال بقاعدة البيانات: " . $e->getMessage());
 }
 
 session_start();
