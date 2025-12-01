@@ -1,5 +1,4 @@
 <?php
-// config.php ← أنظف وأضمن كود لـ Railway 2025 مع Shared Variables
 
 try {
     $pdo = new PDO(
