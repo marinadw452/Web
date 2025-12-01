@@ -1,41 +1,47 @@
 <?php
-// config.php ← شغال 100% مع الوضع الجديد في Railway 2025
+// config.php – اختبار نهائي 100%
 
-$public_url = getenv("DATABASE_PUBLIC_URL");
+header('Content-Type: text/html; charset=utf-8');
 
-if (!$public_url) {
-    die("DATABASE_PUBLIC_URL مش موجود! روح Variables وتأكد إنه موجود");
+$db_url = getenv("DATABASE_PUBLIC_URL");
+
+if (!$db_url) {
+    die("<h1 style='color:red'>DATABASE_PUBLIC_URL مش موجود في الـ Variables</h1>");
 }
 
-$url = parse_url($public_url);
+$url = parse_url($db_url);
 
-$pdo = new PDO(
-    "pgsql:host=" . $url["host"] .
-    ";port=" . $url["port"] .
-    ";dbname=" . ltrim($url["path"], "/") .
-    ";sslmode=require",
-    $url["user"],
-    $url["pass"],
-    [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]
-);
+try {
+    $pdo = new PDO(
+        "pgsql:host={$url['host']};port={$url['port']};dbname=" . ltrim($url['path'], '/'),
+        $url['user'],
+        $url['pass'],
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
 
-// اختبار الاتصال + إنشاء الجدول
-$pdo->query("SELECT 1");
+    // اختبار الاتصال
+    $pdo->query("SELECT 1");
 
-$pdo->exec("
-    CREATE TABLE IF NOT EXISTS users (
+    // إنشاء الجدول لو ما كان موجود
+    $pdo->exec("CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
-        name VARCHAR(100) NOT NULL,
-        email VARCHAR(100) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
+        name VARCHAR(100),
+        email VARCHAR(100) UNIQUE,
+        password VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-");
+    )");
 
-echo "<h3 style='color:green;text-align:center'>تم الربط بنجاح باستخدام DATABASE_PUBLIC_URL</h3>";
+    // جلب عدد المستخدمين
+    $count = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
 
-session_start();
+    echo "<h1 style='color:green; text-align:center'>تم الربط بنجاح 100%</h1>";
+    echo "<h2 style='text-align:center'>عدد المستخدمين حالياً: $count</h2>";
+    echo "<p style='text-align:center'>قاعدة البيانات شغالة وربطت تمام</p>";
+
+} catch (Exception $e) {
+    echo "<h1 style='color:red'>فشل الاتصال</h1>";
+    echo "<pre>" . $e->getMessage() . "</pre>";
+}
+
+die(); // نوقف التنفيذ هنا عشان نشوف النتيجة بس
 ?>
