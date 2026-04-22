@@ -1,0 +1,26 @@
+<?php
+require_once __DIR__ . '/../config.php';
+
+function admin_is_logged_in(): bool {
+    if (!empty($_SESSION['admin_logged_in'])) {
+        return true;
+    }
+
+    return !empty($_SESSION['user_id']) && strtolower((string)($_SESSION['role'] ?? '')) === 'admin';
+}
+
+function admin_require_login(): void {
+    if (!admin_is_logged_in()) {
+        header('Location: login.php');
+        exit;
+    }
+}
+
+function admin_login(string $username): void {
+    $_SESSION['admin_logged_in'] = true;
+    $_SESSION['admin_username'] = $username;
+}
+
+function admin_logout(): void {
+    unset($_SESSION['admin_logged_in'], $_SESSION['admin_username']);
+}

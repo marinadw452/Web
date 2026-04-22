@@ -1,0 +1,161 @@
+<?php
+require_once __DIR__ . '/../config.php';
+
+header('Content-Type: application/json; charset=utf-8');
+
+function json_out(array $data): void {
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (!isLoggedIn()) {
+    json_out(['ok' => false, 'error' => 'غير مسجل دخول']);
+}
+if (!hasRole('seller')) {
+    json_out(['ok' => false, 'error' => 'هذه العملية خاصة بالبائع']);
+}
+
+$conn = db();
+if (!$conn) {
+    json_out(['ok' => false, 'error' => 'خطأ في الاتصال بقاعدة البيانات']);
+}
+
+$type = $_POST['type'] ?? '';
+$seller_id = (int)($_SESSION['user_id'] ?? 0);
+
+if (!isset($_FILES['image']) || !is_array($_FILES['image'])) {
+    json_out(['ok' => false, 'error' => 'لم يتم إرسال ملف']);
+}
+
+$f = $_FILES['image'];
+
+$uploadErr = (int)($f['error'] ?? UPLOAD_ERR_OK);
+if ($uploadErr !== UPLOAD_ERR_OK) {
+    $errMap = [
+        UPLOAD_ERR_INI_SIZE => 'حجم الملف أكبر من الحد المسموح به على السيرفر',
+        UPLOAD_ERR_FORM_SIZE => 'حجم الملف أكبر من الحد المسموح به',
+        UPLOAD_ERR_PARTIAL => 'تم رفع جزء من الملف فقط',
+        UPLOAD_ERR_NO_FILE => 'لم يتم اختيار ملف',
+        UPLOAD_ERR_NO_TMP_DIR => 'مجلد الملفات المؤقتة غير موجود على السيرفر',
+        UPLOAD_ERR_CANT_WRITE => 'تعذر حفظ الملف على السيرفر',
+        UPLOAD_ERR_EXTENSION => 'تم إيقاف الرفع بسبب إضافة PHP',
+    ];
+    $msg = $errMap[$uploadErr] ?? 'فشل رفع الملف';
+    json_out(['ok' => false, 'error' => $msg]);
+}
+
+$maxBytes = ($type === 'shop_background') ? (8 * 1024 * 1024) : (2 * 1024 * 1024);
+if (($f['size'] ?? 0) > $maxBytes) {
+    $mb = (int)round($maxBytes / (1024 * 1024));
+    json_out(['ok' => false, 'error' => 'حجم الصورة كبير (الحد ' . $mb . 'MB)']);
+}
+
+$tmp = $f['tmp_name'] ?? '';
+if (!is_uploaded_file($tmp)) {
+    json_out(['ok' => false, 'error' => 'ملف غير صالح']);
+}
+
+$mime = '';
+if (function_exists('finfo_open')) {
+    $fi = finfo_open(FILEINFO_MIME_TYPE);
+    if ($fi) {
+        $mime = finfo_file($fi, $tmp) ?: '';
+        finfo_close($fi);
+    }
+}
+
+if ($mime === '' && function_exists('getimagesize')) {
+    $gi = @getimagesize($tmp);
+    if (is_array($gi) && !empty($gi['mime'])) {
+        $mime = (string)$gi['mime'];
+    }
+}
+
+$allowed = [
+    'image/jpeg' => 'jpg',
+    'image/jpg'  => 'jpg',
+    'image/pjpeg' => 'jpg',
+    'image/png'  => 'png',
+    'image/webp' => 'webp',
+    'image/gif'  => 'gif'
+];
+
+if (!isset($allowed[$mime])) {
+    json_out(['ok' => false, 'error' => 'صيغة غير مدعومة (JPG/PNG/WEBP/GIF). نوع الملف: ' . ($mime ?: 'غير معروف')]);
+}
+
+$ext = $allowed[$mime];
+
+// Ensure directories
+$baseDir = realpath(__DIR__ . '/../uploads');
+if (!$baseDir) {
+    @mkdir(__DIR__ . '/../uploads', 0775, true);
+    $baseDir = realpath(__DIR__ . '/../uploads');
+}
+
+if ($type === 'product') {
+    $product_id = (int)($_POST['product_id'] ?? 0);
+    if ($product_id <= 0) {
+        json_out(['ok' => false, 'error' => 'معرّف المنتج مطلوب']);
+    }
+
+    $stmt = $conn->prepare('SELECT id FROM products WHERE id = ? AND seller_id = ? LIMIT 1');
+    if (!$stmt) {
+        json_out(['ok' => false, 'error' => 'فشل إعداد الاستعلام']);
+    }
+    $stmt->bind_param('ii', $product_id, $seller_id);
+    $stmt->execute();
+    $stmt->bind_result($pid);
+    $ok = $stmt->fetch();
+    $stmt->close();
+
+    if (!$ok) {
+        json_out(['ok' => false, 'error' => 'المنتج غير موجود أو ليس تابعًا لك']);
+    }
+
+    $dir = __DIR__ . '/../uploads/products';
+    @mkdir($dir, 0775, true);
+
+    $filename = 'p' . $product_id . '_' . $seller_id . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
+    $dest = $dir . '/' . $filename;
+
+    if (!move_uploaded_file($tmp, $dest)) {
+        json_out(['ok' => false, 'error' => 'فشل حفظ الصورة']);
+    }
+
+    $relative = 'uploads/products/' . $filename;
+
+    $stmt = $conn->prepare('UPDATE products SET image_url = ? WHERE id = ? AND seller_id = ?');
+    if ($stmt) {
+        $stmt->bind_param('sii', $relative, $product_id, $seller_id);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    json_out(['ok' => true, 'url' => $relative]);
+}
+
+if ($type === 'shop_background') {
+    $dir = __DIR__ . '/../uploads/shops';
+    @mkdir($dir, 0775, true);
+
+    $filename = 'bg_' . $seller_id . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
+    $dest = $dir . '/' . $filename;
+
+    if (!move_uploaded_file($tmp, $dest)) {
+        json_out(['ok' => false, 'error' => 'فشل حفظ الخلفية']);
+    }
+
+    $relative = 'uploads/shops/' . $filename;
+
+    $stmt = $conn->prepare('UPDATE sellers SET background_url = ? WHERE id = ?');
+    if ($stmt) {
+        $stmt->bind_param('si', $relative, $seller_id);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    json_out(['ok' => true, 'url' => $relative]);
+}
+
+json_out(['ok' => false, 'error' => 'نوع رفع غير معروف']);

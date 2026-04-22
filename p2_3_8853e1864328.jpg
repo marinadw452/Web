@@ -1,0 +1,18 @@
+<?php
+// Database configuration
+return [
+    'db_host' => 'localhost',
+    'db_user' => 'root',      // Default MAMP username
+    'db_pass' => 'root',      // Default MAMP password
+    'db_name' => 'shop_db',   // Your database name
+    
+    // Site settings
+    'site_name' => 'أيدي طيبة',
+    'admin_email' => 'admin@example.com',
+    
+    // Paths
+    'uploads_path' => __DIR__ . '/../uploads',
+    
+    // Debug mode
+    'debug' => true
+];

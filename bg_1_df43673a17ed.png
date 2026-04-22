@@ -1,0 +1,294 @@
+<?php
+require_once __DIR__ . '/../config.php';
+
+header('Content-Type: application/json; charset=utf-8');
+
+function json_out(array $data): void {
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (!isLoggedIn()) {
+    json_out(['ok' => false, 'error' => 'غير مسجل دخول']);
+}
+if (!hasRole('seller')) {
+    json_out(['ok' => false, 'error' => 'هذه العملية خاصة بالبائع']);
+}
+
+$raw = file_get_contents('php://input');
+$payload = json_decode($raw, true);
+if (!is_array($payload)) {
+    $payload = [];
+}
+
+$action = $payload['action'] ?? '';
+$seller_id = (int)($_SESSION['user_id'] ?? 0);
+$conn = db();
+if (!$conn) {
+    json_out(['ok' => false, 'error' => 'خطأ في الاتصال بقاعدة البيانات']);
+}
+
+function to_null_if_empty($v) {
+    if ($v === null) return null;
+    $v = is_string($v) ? trim($v) : $v;
+    if ($v === '') return null;
+    return $v;
+}
+
+function ensure_seller_row(mysqli $conn, int $seller_id): void {
+    $check = $conn->prepare('SELECT id FROM sellers WHERE id = ? LIMIT 1');
+    if (!$check) {
+        throw new RuntimeException('فشل إعداد الاستعلام');
+    }
+    $check->bind_param('i', $seller_id);
+    $check->execute();
+    $check->bind_result($id);
+    if ($check->fetch()) {
+        $check->close();
+        return;
+    }
+    $check->close();
+
+    $owner_name = null;
+    $u = $conn->prepare('SELECT name FROM users WHERE id = ? LIMIT 1');
+    if ($u) {
+        $u->bind_param('i', $seller_id);
+        $u->execute();
+        $u->bind_result($owner_name);
+        $u->fetch();
+        $u->close();
+    }
+
+    $default_store_name = $owner_name ? ('متجر ' . $owner_name) : 'متجر البائع';
+    $ins = $conn->prepare("INSERT INTO sellers (id, store_name, seller_type, is_handmade, created_at, updated_at) VALUES (?, ?, 'individual', 1, NOW(), NOW())");
+    if (!$ins) {
+        throw new RuntimeException('فشل إعداد الاستعلام');
+    }
+    $ins->bind_param('is', $seller_id, $default_store_name);
+    $ins->execute();
+    $ins->close();
+}
+
+try {
+    if ($action === 'categories') {
+        $items = [];
+        $res = $conn->query('SELECT id, name FROM categories ORDER BY name ASC');
+        if ($res) {
+            while ($row = $res->fetch_assoc()) {
+                $items[] = ['id' => (int)$row['id'], 'name' => $row['name']];
+            }
+        }
+        json_out(['ok' => true, 'items' => $items]);
+    }
+
+    if ($action === 'shop_get') {
+        ensure_seller_row($conn, $seller_id);
+        $stmt = $conn->prepare('SELECT s.id, s.store_name, s.store_description, s.city, s.seller_type, s.is_handmade, s.background_url, s.logo_url, s.verification_status, s.delivery_fee, u.name as owner_name FROM sellers s JOIN users u ON u.id = s.id WHERE s.id = ? LIMIT 1');
+        if (!$stmt) json_out(['ok' => false, 'error' => 'فشل إعداد الاستعلام']);
+        $stmt->bind_param('i', $seller_id);
+        $stmt->execute();
+        $stmt->bind_result($id, $store_name, $store_description, $city, $seller_type, $is_handmade, $background_url, $logo_url, $verification_status, $delivery_fee, $owner_name);
+        if (!$stmt->fetch()) {
+            $stmt->close();
+            json_out(['ok' => false, 'error' => 'لم يتم العثور على متجر البائع']);
+        }
+        $stmt->close();
+        json_out([
+            'ok' => true,
+            'item' => [
+                'id' => (int)$id,
+                'store_name' => $store_name,
+                'store_description' => $store_description,
+                'city' => $city,
+                'seller_type' => $seller_type,
+                'is_handmade' => (int)$is_handmade,
+                'background_url' => $background_url,
+                'logo_url' => $logo_url,
+                'verification_status' => $verification_status,
+                'delivery_fee' => $delivery_fee,
+                'owner_name' => $owner_name,
+            ]
+        ]);
+    }
+
+    if ($action === 'shop_update') {
+        $store_name = trim((string)($payload['store_name'] ?? ''));
+        if ($store_name === '') {
+            json_out(['ok' => false, 'error' => 'اسم المتجر مطلوب']);
+        }
+
+        $city = to_null_if_empty($payload['city'] ?? null);
+        $seller_type = ($payload['seller_type'] ?? 'individual') === 'company' ? 'company' : 'individual';
+        $is_handmade = (int)($payload['is_handmade'] ?? 1);
+        $is_handmade = $is_handmade ? 1 : 0;
+        $store_description = to_null_if_empty($payload['store_description'] ?? null);
+        $delivery_fee = (float)($payload['delivery_fee'] ?? 0);
+        if ($delivery_fee < 0) $delivery_fee = 0;
+
+        $stmt = $conn->prepare("INSERT INTO sellers (id, store_name, store_description, city, seller_type, is_handmade, delivery_fee, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ON DUPLICATE KEY UPDATE
+                store_name = VALUES(store_name),
+                store_description = VALUES(store_description),
+                city = VALUES(city),
+                seller_type = VALUES(seller_type),
+                is_handmade = VALUES(is_handmade),
+                delivery_fee = VALUES(delivery_fee),
+                updated_at = NOW()"
+        );
+        if (!$stmt) json_out(['ok' => false, 'error' => 'فشل إعداد الاستعلام']);
+
+        $stmt->bind_param('issssid', $seller_id, $store_name, $store_description, $city, $seller_type, $is_handmade, $delivery_fee);
+        if (!$stmt->execute()) {
+            $stmt->close();
+            json_out(['ok' => false, 'error' => 'فشل حفظ بيانات المتجر']);
+        }
+        $stmt->close();
+        json_out(['ok' => true]);
+    }
+
+    if ($action === 'list') {
+        $items = [];
+        $stmt = $conn->prepare('SELECT p.id, p.name, p.description, p.materials, p.sizes, p.price, p.discount_price, p.category_id, c.name as category_name, p.stock, p.image_url, p.status, p.sort_order, p.created_at FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.seller_id = ? ORDER BY p.sort_order ASC, p.created_at DESC');
+        if (!$stmt) json_out(['ok' => false, 'error' => 'فشل إعداد الاستعلام']);
+        $stmt->bind_param('i', $seller_id);
+        $stmt->execute();
+        $stmt->bind_result($id, $name, $description, $materials, $sizes, $price, $discount_price, $category_id, $category_name, $stock, $image_url, $status, $sort_order, $created_at);
+        while ($stmt->fetch()) {
+            $items[] = [
+                'id' => (int)$id,
+                'name' => $name,
+                'description' => $description,
+                'materials' => $materials,
+                'sizes' => $sizes,
+                'price' => $price,
+                'discount_price' => $discount_price,
+                'category_id' => $category_id === null ? null : (int)$category_id,
+                'category_name' => $category_name,
+                'stock' => (int)$stock,
+                'image_url' => $image_url,
+                'status' => $status,
+                'sort_order' => (int)$sort_order,
+                'created_at' => $created_at,
+            ];
+        }
+        $stmt->close();
+        json_out(['ok' => true, 'items' => $items]);
+    }
+
+    if ($action === 'get') {
+        $id = (int)($payload['id'] ?? 0);
+        if ($id <= 0) json_out(['ok' => false, 'error' => 'معرّف غير صالح']);
+
+        $stmt = $conn->prepare('SELECT id, name, description, materials, sizes, price, discount_price, category_id, stock, image_url, status, sort_order FROM products WHERE id = ? AND seller_id = ? LIMIT 1');
+        if (!$stmt) json_out(['ok' => false, 'error' => 'فشل إعداد الاستعلام']);
+        $stmt->bind_param('ii', $id, $seller_id);
+        $stmt->execute();
+        $stmt->bind_result($pid, $name, $description, $materials, $sizes, $price, $discount_price, $category_id, $stock, $image_url, $status, $sort_order);
+        if (!$stmt->fetch()) {
+            $stmt->close();
+            json_out(['ok' => false, 'error' => 'المنتج غير موجود']);
+        }
+        $stmt->close();
+        json_out(['ok' => true, 'item' => [
+            'id' => (int)$pid,
+            'name' => $name,
+            'description' => $description,
+            'materials' => $materials,
+            'sizes' => $sizes,
+            'price' => $price,
+            'discount_price' => $discount_price,
+            'category_id' => $category_id === null ? null : (int)$category_id,
+            'stock' => (int)$stock,
+            'image_url' => $image_url,
+            'status' => $status,
+            'sort_order' => (int)$sort_order,
+        ]]);
+    }
+
+    if ($action === 'create' || $action === 'update') {
+        $id = (int)($payload['id'] ?? 0);
+        $name = trim((string)($payload['name'] ?? ''));
+        $materials = trim((string)($payload['materials'] ?? ''));
+
+        if ($name === '') json_out(['ok' => false, 'error' => 'اسم المنتج مطلوب']);
+        if ($materials === '') json_out(['ok' => false, 'error' => 'الخامات مطلوبة (مختصر)']);
+
+        $sizes = to_null_if_empty($payload['sizes'] ?? null);
+        $description = to_null_if_empty($payload['description'] ?? null);
+
+        $price = (float)($payload['price'] ?? 0);
+        if ($price < 0) $price = 0;
+
+        $discount_price = to_null_if_empty($payload['discount_price'] ?? null);
+        $discount_price = $discount_price === null ? null : (float)$discount_price;
+        if ($discount_price !== null && $discount_price < 0) $discount_price = null;
+
+        $stock = (int)($payload['stock'] ?? 0);
+        if ($stock < 0) $stock = 0;
+
+        $category_id = to_null_if_empty($payload['category_id'] ?? null);
+        $category_id = $category_id === null ? null : (int)$category_id;
+        if ($category_id !== null && $category_id <= 0) $category_id = null;
+
+        $status = $payload['status'] ?? 'PUBLISHED';
+        if (!in_array($status, ['DRAFT','PUBLISHED','ARCHIVED'], true)) $status = 'PUBLISHED';
+
+        if ($action === 'create') {
+            $stmt = $conn->prepare('INSERT INTO products (seller_id, name, description, materials, sizes, price, discount_price, category_id, stock, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())');
+            if (!$stmt) json_out(['ok' => false, 'error' => 'فشل إعداد الاستعلام']);
+
+            $discount_price_param = $discount_price;
+            $category_id_param = $category_id;
+
+            $stmt->bind_param('issssddiis', $seller_id, $name, $description, $materials, $sizes, $price, $discount_price_param, $category_id_param, $stock, $status);
+            if (!$stmt->execute()) {
+                $stmt->close();
+                json_out(['ok' => false, 'error' => 'فشل إنشاء المنتج']);
+            }
+            $newId = $stmt->insert_id;
+            $stmt->close();
+            json_out(['ok' => true, 'id' => (int)$newId]);
+        }
+
+        // update
+        if ($id <= 0) json_out(['ok' => false, 'error' => 'معرّف المنتج مطلوب']);
+
+        $stmt = $conn->prepare('UPDATE products SET name = ?, description = ?, materials = ?, sizes = ?, price = ?, discount_price = ?, category_id = ?, stock = ?, status = ? WHERE id = ? AND seller_id = ?');
+        if (!$stmt) json_out(['ok' => false, 'error' => 'فشل إعداد الاستعلام']);
+
+        $discount_price_param = $discount_price;
+        $category_id_param = $category_id;
+
+        $stmt->bind_param('ssssddiisii', $name, $description, $materials, $sizes, $price, $discount_price_param, $category_id_param, $stock, $status, $id, $seller_id);
+        if (!$stmt->execute()) {
+            $stmt->close();
+            json_out(['ok' => false, 'error' => 'فشل تحديث المنتج']);
+        }
+        $stmt->close();
+        json_out(['ok' => true]);
+    }
+
+    if ($action === 'delete') {
+        $id = (int)($payload['id'] ?? 0);
+        if ($id <= 0) json_out(['ok' => false, 'error' => 'معرّف غير صالح']);
+
+        $stmt = $conn->prepare('DELETE FROM products WHERE id = ? AND seller_id = ?');
+        if (!$stmt) json_out(['ok' => false, 'error' => 'فشل إعداد الاستعلام']);
+        $stmt->bind_param('ii', $id, $seller_id);
+        if (!$stmt->execute()) {
+            $stmt->close();
+            json_out(['ok' => false, 'error' => 'فشل حذف المنتج']);
+        }
+        if ($stmt->affected_rows <= 0) {
+            $stmt->close();
+            json_out(['ok' => false, 'error' => 'المنتج غير موجود']);
+        }
+        $stmt->close();
+        json_out(['ok' => true]);
+    }
+
+    json_out(['ok' => false, 'error' => 'عملية غير معروفة']);
+} catch (Throwable $e) {
+    json_out(['ok' => false, 'error' => 'خطأ غير متوقع: ' . $e->getMessage()]);
+}

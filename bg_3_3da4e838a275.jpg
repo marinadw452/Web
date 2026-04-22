@@ -1,0 +1,490 @@
+<?php
+require_once __DIR__ . '/../config.php';
+
+if (!isLoggedIn()) {
+    redirect('../login.php?redirect=' . urlencode('seller/dashboard.php'));
+}
+if (!hasRole('seller')) {
+    $_SESSION['error'] = 'هذه الصفحة خاصة بالبائعين فقط.';
+    redirect('../index.php');
+}
+
+$page_title = 'لوحة البائع';
+include __DIR__ . '/../includes/header.php';
+
+$seller_id = (int)($_SESSION['user_id'] ?? 0);
+?>
+
+<style>
+  .sd-shell{max-width:1200px;margin:110px auto 60px;padding:0 16px;}
+  .sd-card{background:rgba(255,255,255,0.92);border:1px solid rgba(62,39,35,0.08);border-radius:22px;box-shadow:0 18px 45px rgba(62,39,35,0.08);overflow:hidden;}
+  .sd-hero{padding:20px 20px 16px;background:linear-gradient(135deg, rgba(186,125,55,0.16), rgba(255,183,77,0.10));border-bottom:1px solid rgba(62,39,35,0.08);}
+  .sd-hero h2{margin:0;color:#3e2723;font-size:24px;letter-spacing:0.2px;}
+  .sd-hero p{margin:8px 0 0;color:#6d4c41;font-weight:700;}
+  .sd-actions{margin-top:14px;display:flex;gap:12px;flex-wrap:wrap;}
+  .sd-tab{border:1px solid rgba(62,39,35,0.12);background:#fff;color:#3e2723;border-radius:18px;padding:12px 14px;font-weight:900;cursor:pointer;display:flex;align-items:center;gap:10px;min-width:220px;transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;}
+  .sd-tab:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(62,39,35,0.10);border-color:rgba(186,125,55,0.45);}
+  .sd-tab.is-active{background:linear-gradient(135deg,#3e2723,#ba7d37);border-color:transparent;color:#fff;}
+  .sd-tab .sd-ico{width:42px;height:42px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:rgba(186,125,55,0.14);color:#5d4037;flex:0 0 auto;}
+  .sd-tab.is-active .sd-ico{background:rgba(255,255,255,0.18);color:#fff;}
+  .sd-tab .sd-meta{display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;}
+  .sd-tab .sd-meta small{font-weight:800;opacity:0.78;}
+  .sd-body{padding:18px 18px 22px;}
+  .sd-panels{display:block;}
+  .sd-panel{display:none;}
+  .sd-panel.is-active{display:block;}
+  .sd-panel .sd-section{background:#fff;border:1px solid rgba(62,39,35,0.08);border-radius:18px;padding:16px;}
+  @media (min-width: 980px){
+    .sd-panel.is-active.sd-panel-products{display:block;}
+  }
+</style>
+
+<div class="sd-shell">
+  <div class="sd-card">
+    <div class="sd-hero">
+      <h2>لوحة البائع</h2>
+      <p>إدارة متجرك ومنتجاتك — (الخامات مطلوبة، الأحجام اختيارية)</p>
+
+      <div class="sd-actions">
+        <button type="button" id="tabShopBtn" class="sd-tab is-active" data-tab="shop">
+          <span class="sd-ico"><i class="fas fa-store"></i></span>
+          <span class="sd-meta">
+            <span>تعديل المتجر</span>
+            <small>بيانات المتجر + الخلفية</small>
+          </span>
+        </button>
+        <button type="button" id="tabProductsBtn" class="sd-tab" data-tab="products">
+          <span class="sd-ico"><i class="fas fa-box-open"></i></span>
+          <span class="sd-meta">
+            <span>إضافة المنتجات</span>
+            <small>إضافة/تعديل/حذف المنتجات</small>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <div class="sd-body">
+      <div class="sd-panels">
+        <div id="panelShop" class="sd-panel is-active sd-panel-shop">
+          <section class="sd-section">
+            <h3 style="margin:0 0 12px;color:#5d4037;font-size:18px;">بيانات المتجر</h3>
+
+        <form id="shopForm">
+          <label class="field" style="display:block;margin:10px 0;">
+            <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">اسم المتجر</span>
+            <input class="form-control" type="text" name="store_name" id="shop_store_name" required>
+          </label>
+
+          <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">المدينة</span>
+              <input class="form-control" type="text" name="city" id="shop_city" placeholder="مثال: الرياض">
+            </label>
+
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">نوع البائع</span>
+              <select class="form-control" name="seller_type" id="shop_seller_type">
+                <option value="individual">فرد</option>
+                <option value="company">شركة</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">هاند ميد؟</span>
+              <select class="form-control" name="is_handmade" id="shop_is_handmade">
+                <option value="1">نعم</option>
+                <option value="0">لا</option>
+              </select>
+            </label>
+
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">صورة/خلفية المتجر (اختياري)</span>
+              <input class="form-control" type="file" id="shop_background" accept="image/*">
+            </label>
+          </div>
+
+          <label class="field" style="display:block;margin:10px 0;">
+            <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">وصف مختصر</span>
+            <textarea class="form-control" name="store_description" id="shop_store_description" rows="3" placeholder="وصف تراثي مختصر عن متجرك"></textarea>
+          </label>
+
+          <label class="field" style="display:block;margin:10px 0;">
+            <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">رسوم التوصيل (ريال)</span>
+            <input class="form-control" type="number" min="0" step="0.01" name="delivery_fee" id="shop_delivery_fee" value="0">
+          </label>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn" type="submit" style="padding:12px 18px;border-radius:14px;">حفظ بيانات المتجر</button>
+            <a class="btn" id="openStoreBtn" href="#" style="padding:12px 18px;border-radius:14px;background:#3e2723;color:#fff;text-decoration:none;">فتح صفحة المتجر</a>
+          </div>
+          <div id="shopMsg" style="margin-top:10px;font-weight:700;color:#8d6e63;"></div>
+        </form>
+          </section>
+        </div>
+
+        <div id="panelProducts" class="sd-panel sd-panel-products">
+          <section class="sd-section">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+              <h3 style="margin:0;color:#5d4037;font-size:18px;">منتجاتي</h3>
+              <button class="btn" id="openAddFormBtn" type="button" style="padding:10px 14px;border-radius:14px;">+ إضافة منتج</button>
+            </div>
+
+        <form id="productForm" style="margin-top:12px;border:1px solid rgba(62,39,35,0.08);border-radius:16px;padding:14px;background:#fdf9f3;display:none;">
+          <input type="hidden" name="id" id="p_id">
+
+          <label class="field" style="display:block;margin:10px 0;">
+            <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">اسم المنتج</span>
+            <input class="form-control" type="text" name="name" id="p_name" required>
+          </label>
+
+          <label class="field" style="display:block;margin:10px 0;">
+            <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">الخامات المستخدمة (مختصر)</span>
+            <input class="form-control" type="text" name="materials" id="p_materials" placeholder="مثال: قطن 100%، خيط كروشيه" required>
+          </label>
+
+          <label class="field" style="display:block;margin:10px 0;">
+            <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">الأحجام (اختياري)</span>
+            <input class="form-control" type="text" name="sizes" id="p_sizes" placeholder="مثال: S,M,L أو صغير,متوسط,كبير">
+          </label>
+
+          <label class="field" style="display:block;margin:10px 0;">
+            <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">الوصف</span>
+            <textarea class="form-control" name="description" id="p_description" rows="3"></textarea>
+          </label>
+
+          <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">السعر</span>
+              <input class="form-control" type="number" step="0.01" min="0" name="price" id="p_price" required>
+            </label>
+
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">سعر مخفض (اختياري)</span>
+              <input class="form-control" type="number" step="0.01" min="0" name="discount_price" id="p_discount_price">
+            </label>
+          </div>
+
+          <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">المخزون</span>
+              <input class="form-control" type="number" min="0" name="stock" id="p_stock" value="0" required>
+            </label>
+
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">التصنيف</span>
+              <select class="form-control" name="category_id" id="p_category_id">
+                <option value="">بدون تصنيف</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">الحالة</span>
+              <select class="form-control" name="status" id="p_status">
+                <option value="DRAFT">مسودة</option>
+                <option value="PUBLISHED">منشور</option>
+                <option value="ARCHIVED">مؤرشف</option>
+              </select>
+            </label>
+
+            <label class="field" style="display:block;margin:10px 0;">
+              <span style="display:block;font-weight:700;margin-bottom:6px;color:#3e2723;">صورة المنتج (اختياري)</span>
+              <input class="form-control" type="file" id="p_image" accept="image/*">
+            </label>
+          </div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+            <button class="btn" type="submit" style="padding:12px 18px;border-radius:14px;">حفظ</button>
+            <button class="btn" id="cancelFormBtn" type="button" style="padding:12px 18px;border-radius:14px;background:#f2f2f2;color:#3e2723;">إلغاء</button>
+          </div>
+          <div id="productMsg" style="margin-top:10px;font-weight:700;color:#8d6e63;"></div>
+        </form>
+
+        <div id="productsList" style="margin-top:12px;"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const apiUrl = '../seller/api.php';
+
+function esc(s){
+  return String(s ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+}
+
+function setActiveTab(tab){
+  const shopBtn = document.getElementById('tabShopBtn');
+  const prodBtn = document.getElementById('tabProductsBtn');
+  const panelShop = document.getElementById('panelShop');
+  const panelProducts = document.getElementById('panelProducts');
+
+  const isProducts = tab === 'products';
+  shopBtn?.classList.toggle('is-active', !isProducts);
+  prodBtn?.classList.toggle('is-active', isProducts);
+
+  panelShop?.classList.toggle('is-active', !isProducts);
+  panelProducts?.classList.toggle('is-active', isProducts);
+
+  if (isProducts) {
+    // فتح نموذج الإضافة مباشرة (كطلب المستخدم)
+    showForm(false);
+  } else {
+    hideForm();
+  }
+}
+
+document.getElementById('tabShopBtn')?.addEventListener('click', () => setActiveTab('shop'));
+document.getElementById('tabProductsBtn')?.addEventListener('click', () => setActiveTab('products'));
+
+// دعم فتح تبويب المنتجات من الرابط: dashboard.php?tab=products
+(function initTabsFromUrl(){
+  try {
+    const params = new URLSearchParams(location.search);
+    const tab = (params.get('tab') || '').toLowerCase();
+    if (tab === 'products') {
+      setActiveTab('products');
+    }
+  } catch (e) {}
+})();
+
+async function api(payload){
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+}
+
+async function loadCategories(selectedId=null){
+  const data = await api({action:'categories'});
+  const sel = document.getElementById('p_category_id');
+  sel.innerHTML = '<option value="">بدون تصنيف</option>';
+  if(data.ok){
+    for(const c of (data.items||[])){
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name;
+      sel.appendChild(opt);
+    }
+  }
+  if(selectedId !== null && selectedId !== undefined){
+    sel.value = String(selectedId ?? '');
+  }
+}
+
+async function loadShop(){
+  const data = await api({action:'shop_get'});
+  if(!data.ok) return;
+  document.getElementById('shop_store_name').value = data.item.store_name || '';
+  document.getElementById('shop_city').value = data.item.city || '';
+  document.getElementById('shop_seller_type').value = data.item.seller_type || 'individual';
+  document.getElementById('shop_is_handmade').value = String(data.item.is_handmade ?? 1);
+  document.getElementById('shop_store_description').value = data.item.store_description || '';
+  document.getElementById('shop_delivery_fee').value = String(data.item.delivery_fee ?? 0);
+
+  const openStoreBtn = document.getElementById('openStoreBtn');
+  openStoreBtn.href = '../store.php?id=' + encodeURIComponent(data.item.id);
+}
+
+async function loadProducts(){
+  const list = document.getElementById('productsList');
+  list.innerHTML = 'جاري التحميل...';
+  const data = await api({action:'list'});
+  if(!data.ok){
+    list.innerHTML = '<div style="color:#b00020;font-weight:800;">' + esc(data.error||'تعذر التحميل') + '</div>';
+    return;
+  }
+  const items = data.items || [];
+  if(!items.length){
+    list.innerHTML = '<div style="color:#8d6e63;">لا توجد منتجات بعد.</div>';
+    return;
+  }
+
+  list.innerHTML = items.map(p => {
+    const img = p.image_url ? esc(p.image_url) : '';
+    const imgHtml = img ? `<img src="${img}" alt="${esc(p.name)}" style="width:64px;height:64px;object-fit:cover;border-radius:12px;border:1px solid rgba(0,0,0,0.08);">` : `<div style="width:64px;height:64px;border-radius:12px;border:1px dashed rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;color:#8d6e63;font-weight:800;font-size:12px;">بدون</div>`;
+
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid rgba(62,39,35,0.08);border-radius:16px;padding:12px;margin:10px 0;background:#fff;">
+        <div style="display:flex;gap:12px;align-items:center;">
+          ${imgHtml}
+          <div>
+            <div style="font-weight:900;color:#3e2723;">${esc(p.name)}</div>
+            <div style="color:#8d6e63;font-weight:700;font-size:13px;margin-top:4px;display:flex;gap:10px;flex-wrap:wrap;">
+              <span>السعر: ${esc(p.price)} ريال</span>
+              ${p.discount_price ? `<span>خصم: ${esc(p.discount_price)} ريال</span>` : ''}
+              <span>المخزون: ${esc(p.stock)}</span>
+              <span>الحالة: ${esc(p.status)}</span>
+              <span>التصنيف: ${esc(p.category_name || '-')}</span>
+            </div>
+            <div style="color:#6d4c41;font-weight:700;font-size:13px;margin-top:6px;">الخامات: ${esc(p.materials || '-')} ${p.sizes ? `— الأحجام: ${esc(p.sizes)}` : ''}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn" type="button" data-edit="1" data-id="${p.id}" style="padding:10px 12px;border-radius:12px;background:#f2f2f2;color:#3e2723;">تعديل</button>
+          <button class="btn" type="button" data-del="1" data-id="${p.id}" style="padding:10px 12px;border-radius:12px;background:#ffe8ea;color:#b00020;">حذف</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-edit="1"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      const data = await api({action:'get', id});
+      if(!data.ok) return;
+      showForm(true);
+      const p = data.item;
+      document.getElementById('p_id').value = p.id;
+      document.getElementById('p_name').value = p.name || '';
+      document.getElementById('p_materials').value = p.materials || '';
+      document.getElementById('p_sizes').value = p.sizes || '';
+      document.getElementById('p_description').value = p.description || '';
+      document.getElementById('p_price').value = p.price || 0;
+      document.getElementById('p_discount_price').value = p.discount_price || '';
+      document.getElementById('p_stock').value = p.stock || 0;
+      document.getElementById('p_status').value = p.status || 'PUBLISHED';
+      await loadCategories(p.category_id);
+
+      document.getElementById('productMsg').textContent = '';
+      document.getElementById('p_image').value = '';
+    });
+  });
+
+  list.querySelectorAll('[data-del="1"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      if(!confirm('هل أنت متأكد من حذف المنتج؟')) return;
+      const data = await api({action:'delete', id});
+      if(!data.ok){
+        document.getElementById('productMsg').textContent = data.error || 'فشل الحذف';
+        return;
+      }
+      await loadProducts();
+    });
+  });
+}
+
+function showForm(edit=false){
+  const form = document.getElementById('productForm');
+  form.style.display = 'block';
+  if(!edit){
+    form.reset?.();
+    document.getElementById('p_id').value = '';
+    document.getElementById('p_stock').value = 0;
+    document.getElementById('p_status').value = 'PUBLISHED';
+    document.getElementById('p_discount_price').value = '';
+    document.getElementById('p_image').value = '';
+    document.getElementById('productMsg').textContent = '';
+    loadCategories(null);
+  }
+  form.scrollIntoView({behavior:'smooth', block:'start'});
+}
+function hideForm(){
+  document.getElementById('productForm').style.display = 'none';
+}
+
+document.getElementById('openAddFormBtn').addEventListener('click', () => showForm(false));
+document.getElementById('cancelFormBtn').addEventListener('click', hideForm);
+
+document.getElementById('productForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('productMsg');
+  msg.textContent = 'جاري الحفظ...';
+
+  const id = document.getElementById('p_id').value;
+  const payload = {
+    action: id ? 'update' : 'create',
+    id: id || null,
+    name: document.getElementById('p_name').value.trim(),
+    materials: document.getElementById('p_materials').value.trim(),
+    sizes: document.getElementById('p_sizes').value.trim(),
+    description: document.getElementById('p_description').value.trim(),
+    price: document.getElementById('p_price').value,
+    discount_price: document.getElementById('p_discount_price').value,
+    stock: document.getElementById('p_stock').value,
+    category_id: document.getElementById('p_category_id').value || null,
+    status: document.getElementById('p_status').value
+  };
+
+  const data = await api(payload);
+  if(!data.ok){
+    msg.textContent = data.error || 'فشل الحفظ';
+    return;
+  }
+
+  const productId = id ? Number(id) : Number(data.id);
+
+  const imgFile = document.getElementById('p_image').files?.[0];
+  if(imgFile){
+    const fd = new FormData();
+    fd.append('type', 'product');
+    fd.append('product_id', String(productId));
+    fd.append('image', imgFile);
+
+    const upRes = await fetch('../seller/upload.php', {method:'POST', body: fd});
+    const upData = await upRes.json();
+    if(!upData.ok){
+      msg.textContent = upData.error || 'تم الحفظ لكن فشل رفع الصورة';
+    }
+  }
+
+  msg.textContent = 'تم الحفظ بنجاح';
+  hideForm();
+  await loadProducts();
+});
+
+document.getElementById('shopForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('shopMsg');
+  msg.textContent = 'جاري الحفظ...';
+
+  const payload = {
+    action: 'shop_update',
+    store_name: document.getElementById('shop_store_name').value.trim(),
+    city: document.getElementById('shop_city').value.trim(),
+    seller_type: document.getElementById('shop_seller_type').value,
+    is_handmade: document.getElementById('shop_is_handmade').value,
+    store_description: document.getElementById('shop_store_description').value.trim(),
+    delivery_fee: document.getElementById('shop_delivery_fee').value,
+  };
+
+  const data = await api(payload);
+  if(!data.ok){
+    msg.textContent = data.error || 'فشل حفظ بيانات المتجر';
+    return;
+  }
+
+  const bgFile = document.getElementById('shop_background').files?.[0];
+  if(bgFile){
+    const fd = new FormData();
+    fd.append('type', 'shop_background');
+    fd.append('image', bgFile);
+
+    const upRes = await fetch('../seller/upload.php', {method:'POST', body: fd});
+    const upData = await upRes.json();
+    if(!upData.ok){
+      msg.textContent = upData.error || 'تم الحفظ لكن فشل رفع الخلفية';
+      return;
+    }
+  }
+
+  msg.textContent = 'تم حفظ بيانات المتجر';
+  await loadShop();
+});
+
+(async function init(){
+  await loadCategories();
+  await loadShop();
+  await loadProducts();
+})();
+</script>
+
+<?php include __DIR__ . '/../includes/footer.php'; ?>

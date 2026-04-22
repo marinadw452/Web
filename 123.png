@@ -1,0 +1,295 @@
+// نظام السلة + المفضلة (LocalStorage) - يشتغل في كل الصفحات
+(function () {
+  if (window.__goodhands_cart_v2_loaded) return;
+  window.__goodhands_cart_v2_loaded = true;
+
+  const LEGACY_CART_KEY = 'goodhands_cart_items';
+  const LEGACY_FAV_KEY = 'goodhands_favorites';
+  const GUEST_CART_KEY = 'goodhands_cart_items_guest';
+  const GUEST_FAV_KEY = 'goodhands_favorites_guest';
+
+  function getUserId() {
+    const v = (window.__userId ?? null);
+    if (v === null || v === undefined) return '';
+    const s = String(v).trim();
+    return s === '' ? '' : s;
+  }
+
+  function cartKey() {
+    const uid = getUserId();
+    return uid ? ('goodhands_cart_items_u_' + uid) : GUEST_CART_KEY;
+  }
+
+  function favKey() {
+    const uid = getUserId();
+    return uid ? ('goodhands_favorites_u_' + uid) : GUEST_FAV_KEY;
+  }
+
+  function readJson(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+      const val = JSON.parse(raw);
+      return val ?? fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function writeJson(key, val) {
+    localStorage.setItem(key, JSON.stringify(val));
+  }
+
+  function toast(msg) {
+    const el = document.createElement('div');
+    el.textContent = msg;
+    el.style.cssText = `
+      position:fixed; top:110px; left:50%; transform:translateX(-50%);
+      background:#ffb74d; color:#3e2723; padding:12px 22px; border-radius:999px;
+      font-weight:900; z-index:9999; box-shadow:0 10px 30px rgba(0,0,0,0.18);
+      animation: goodhands_toast 2.6s forwards;
+      max-width:92vw; text-align:center;
+    `;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2600);
+  }
+
+  function normalizePrice(v) {
+    const n = Number(String(v ?? '').replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function cartGetItems() {
+    // Migration from legacy key (pre-account carts)
+    const key = cartKey();
+    let items = readJson(key, []);
+    if ((!items || !items.length) && localStorage.getItem(LEGACY_CART_KEY)) {
+      const legacy = readJson(LEGACY_CART_KEY, []);
+      if (Array.isArray(legacy) && legacy.length) {
+        writeJson(key, legacy);
+        localStorage.removeItem(LEGACY_CART_KEY);
+        items = legacy;
+      }
+    }
+    return Array.isArray(items) ? items : [];
+  }
+
+  function cartSetItems(items) {
+    writeJson(cartKey(), items);
+    updateCartBadge();
+  }
+
+  function cartCount() {
+    return cartGetItems().reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+  }
+
+  function cartAdd(item) {
+    const id = String(item.id || '').trim();
+    if (!id) return false;
+
+    const name = String(item.name || '').trim();
+    const image = String(item.image || '').trim();
+    const price = normalizePrice(item.price);
+    const size = item.size ? String(item.size).trim() : '';
+    const qty = Math.max(1, Number(item.qty) || 1);
+
+    const items = cartGetItems();
+    const key = id + '::' + size;
+    const idx = items.findIndex(x => (String(x.id) + '::' + String(x.size || '')) === key);
+    if (idx >= 0) {
+      items[idx].qty = Math.max(1, (Number(items[idx].qty) || 0) + qty);
+    } else {
+      items.push({ id, name, image, price, size, qty });
+    }
+    cartSetItems(items);
+    return true;
+  }
+
+  function cartRemove(id, size) {
+    const items = cartGetItems().filter(x => !(String(x.id) === String(id) && String(x.size || '') === String(size || '')));
+    cartSetItems(items);
+  }
+
+  function cartUpdateQty(id, size, qty) {
+    const q = Math.max(1, Number(qty) || 1);
+    const items = cartGetItems();
+    const idx = items.findIndex(x => (String(x.id) === String(id) && String(x.size || '') === String(size || '')));
+    if (idx >= 0) {
+      items[idx].qty = q;
+      cartSetItems(items);
+    }
+  }
+
+  function favGetItems() {
+    const key = favKey();
+    let items = readJson(key, []);
+    if ((!items || !items.length) && localStorage.getItem(LEGACY_FAV_KEY)) {
+      const legacy = readJson(LEGACY_FAV_KEY, []);
+      if (Array.isArray(legacy) && legacy.length) {
+        writeJson(key, legacy);
+        localStorage.removeItem(LEGACY_FAV_KEY);
+        items = legacy;
+      }
+    }
+    return Array.isArray(items) ? items : [];
+  }
+
+  function favHas(id) {
+    return favGetItems().some(x => String(x.id) === String(id));
+  }
+
+  function favToggle(item) {
+    const id = String(item.id || '').trim();
+    if (!id) return { ok: false, on: false };
+
+    const items = favGetItems();
+    const idx = items.findIndex(x => String(x.id) === id);
+    if (idx >= 0) {
+      items.splice(idx, 1);
+      writeJson(favKey(), items);
+      return { ok: true, on: false };
+    }
+
+    items.unshift({
+      id,
+      name: String(item.name || '').trim(),
+      image: String(item.image || '').trim(),
+      price: normalizePrice(item.price)
+    });
+    writeJson(favKey(), items);
+    return { ok: true, on: true };
+  }
+
+  function updateCartBadge() {
+    const el = document.getElementById('cart-number');
+    if (!el) return;
+    const n = cartCount();
+    el.textContent = String(n);
+    el.style.display = n > 0 ? 'inline-flex' : 'none';
+  }
+
+  async function notifFetchCount() {
+    const bellBadge = document.getElementById('notif-number');
+    const bellLink = document.querySelector('.notif-link');
+    if (!bellBadge || !bellLink) return;
+
+    const base = (window.__basePath || '');
+    try {
+      const res = await fetch(base + 'notifications_api.php?action=count', {
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await res.json();
+      if (!data || !data.ok) return;
+
+      const n = Number(data.unread) || 0;
+      bellBadge.textContent = String(n);
+      bellBadge.style.display = n > 0 ? 'inline-flex' : 'none';
+      bellLink.classList.toggle('has-unread', n > 0);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function hydrateFavButtons() {
+    document.querySelectorAll('[data-fav="1"]').forEach(btn => {
+      const id = btn.getAttribute('data-id');
+      if (!id) return;
+      const on = favHas(id);
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  window.GoodHandsCart = {
+    getItems: cartGetItems,
+    add: cartAdd,
+    remove: cartRemove,
+    updateQty: cartUpdateQty,
+    count: cartCount,
+    setItems: cartSetItems,
+    updateBadge: updateCartBadge,
+  };
+
+  window.GoodHandsNotif = {
+    updateBadge: notifFetchCount,
+  };
+
+  window.GoodHandsFav = {
+    getItems: favGetItems,
+    has: favHas,
+    toggle: favToggle,
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    updateCartBadge();
+    notifFetchCount();
+    hydrateFavButtons();
+
+    // تحديث عداد الإشعارات بشكل خفيف
+    setInterval(notifFetchCount, 20000);
+
+    document.body.addEventListener('click', (e) => {
+      const addBtn = e.target.closest('button[data-add-to-cart="1"]');
+      if (addBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const id = addBtn.getAttribute('data-id') || addBtn.getAttribute('data-product-id');
+        const name = addBtn.getAttribute('data-name') || '';
+        const image = addBtn.getAttribute('data-image') || '';
+        const price = addBtn.getAttribute('data-price') || '';
+        const sizes = (addBtn.getAttribute('data-sizes') || '').trim();
+
+        console.log('Add to cart clicked - ID:', id, 'Name:', name, 'Price:', price, 'Sizes:', sizes);
+        
+        // إذا المنتج له مقاسات، نوديه للتفاصيل عشان يختار المقاس والكمية
+        if (sizes && sizes !== '' && sizes !== 'NULL') {
+          console.log('Product has sizes, redirecting to product page');
+          window.location.href = 'product.php?id=' + encodeURIComponent(id || '');
+          return;
+        }
+
+        console.log('Adding product to cart directly');
+        if (cartAdd({ id, name, image, price, qty: 1 })) {
+          toast('تمت الإضافة إلى السلة');
+          console.log('Product added to cart successfully');
+        } else {
+          console.log('Failed to add product to cart');
+        }
+        return;
+      }
+
+      const favBtn = e.target.closest('button[data-fav="1"]');
+      if (favBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const id = favBtn.getAttribute('data-id');
+        const name = favBtn.getAttribute('data-name') || '';
+        const image = favBtn.getAttribute('data-image') || '';
+        const price = favBtn.getAttribute('data-price') || '';
+        
+        console.log('Favorite button clicked - ID:', id, 'Name:', name, 'Price:', price);
+        
+        const res = favToggle({ id, name, image, price });
+        if (res.ok) {
+          favBtn.classList.toggle('is-active', res.on);
+          favBtn.setAttribute('aria-pressed', res.on ? 'true' : 'false');
+          toast(res.on ? 'تمت الإضافة إلى المفضلة' : 'تمت الإزالة من المفضلة');
+          console.log('Favorite toggle successful, now:', res.on ? 'added' : 'removed');
+        } else {
+          console.log('Failed to toggle favorite');
+        }
+      }
+    });
+  });
+})();
+
+// أنيميشن التنبيه
+const style = document.createElement('style');
+style.textContent = `
+@keyframes goodhands_toast {
+  0%, 100% { opacity:0; transform:translateX(-50%) translateY(-20px); }
+  15%, 85% { opacity:1; transform:translateX(-50%) translateY(0); }
+}`;
+document.head.appendChild(style);

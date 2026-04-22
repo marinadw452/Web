@@ -1,0 +1,118 @@
+<?php
+require_once __DIR__ . '/../config.php';
+$base = '';
+if (isset($_SERVER['SCRIPT_NAME']) && preg_match('#/(seller|admin)/#', $_SERVER['SCRIPT_NAME'])) {
+  $base = '../';
+}
+?>
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><?php echo $page_title ?? 'أيدي طيّبة'; ?></title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="<?= $base ?>assets/css/style.css">
+  <script>
+    window.__basePath = "<?= $base ?>";
+    window.__userId = <?= isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 'null' ?>;
+    window.__isLoggedIn = <?= isset($_SESSION['user_id']) ? 'true' : 'false' ?>;
+  </script>
+</head>
+
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+  <div class="container nav-container">
+
+    <div class="nav-actions">
+      <a class="notif-link" href="<?= $base ?>notifications_center.php" aria-label="الإشعارات">
+        <svg class="notif-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22c1.2 0 2.2-1 2.2-2.2H9.8C9.8 21 10.8 22 12 22Z" fill="currentColor" opacity="0.95"></path>
+          <path d="M18 16.5V11c0-3.2-1.7-5.5-5-6.1V4a1 1 0 1 0-2 0v.9c-3.3.6-5 2.9-5 6.1v5.5l-1.4 1.4c-.4.4-.1 1.1.5 1.1h15.8c.6 0 .9-.7.5-1.1L18 16.5Z" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+          <path d="M16.6 7.4c-.7-1-1.9-1.8-3.5-2.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.8"></path>
+        </svg>
+        <span class="notif-badge" id="notif-number" style="display:none;">0</span>
+      </a>
+
+      <a class="cart-link" href="<?= $base ?>cart.php" aria-label="السلة">
+        <img src="<?= $base ?>images/سله.png" alt="السلة" class="cart-icon">
+        <span class="cart-badge" id="cart-number" style="display:none;">0</span>
+      </a>
+
+      <div id="auth-section" class="auth-section">
+        <?php if(isset($_SESSION['user_id'])): 
+          $initial = !empty($_SESSION['name']) ? strtoupper(substr($_SESSION['name'], 0, 1)) : 'U';
+          // إنشاء لون فريد لكل مستخدم بناءً على الـ ID
+          $hue = intval($_SESSION['user_id']) * 30 % 360;
+          $avatar_bg = "hsl({$hue}, 70%, 60%)";
+          $text_color = "hsl({$hue}, 30%, 20%)";
+        ?>
+          <div class="user-avatar-container">
+            <div class="user-avatar" title="<?= htmlspecialchars($_SESSION['name'] ?? 'مستخدم') ?>">
+              <div class="avatar-circle pulse" style="background-color: <?= $avatar_bg ?>; color: <?= $text_color ?>;">
+                <?= $initial ?>
+              </div>
+            </div>
+            <div class="user-menu">
+              <p class="user-name"><?= htmlspecialchars($_SESSION['name'] ?? 'مستخدم') ?></p>
+              <?php if (($_SESSION['role'] ?? '') === 'seller'): ?>
+                <a href="<?= $base ?>seller/dashboard.php" class="profile-link">لوحة البائع</a>
+                <a href="<?= $base ?>seller_orders_center.php" class="profile-link">طلبات المتجر</a>
+              <?php endif; ?>
+              <?php if (strtolower((string)($_SESSION['role'] ?? '')) === 'admin'): ?>
+                <a href="<?= $base ?>admin/index.php" class="profile-link">لوحة الأدمن</a>
+                <a href="<?= $base ?>admin/courses.php" class="profile-link">إدارة الكورسات</a>
+                <a href="<?= $base ?>admin/contact_messages.php" class="profile-link">رسائل التواصل</a>
+              <?php endif; ?>
+              <a href="<?= $base ?>profile.php" class="profile-link">الملف الشخصي</a>
+              <a href="<?= $base ?>my_orders.php" class="profile-link">طلباتي</a>
+              <a href="<?= $base ?>notifications_center.php" class="profile-link">الإشعارات</a>
+              <a href="<?= $base ?>favorites.php" class="profile-link">المفضلة</a>
+              <a href="<?= $base ?>logout.php" class="logout-link">تسجيل الخروج</a>
+            </div>
+          </div>
+        <?php else: ?>
+          <?php $current_page = $_SERVER['REQUEST_URI']; ?>
+          <a href="<?= $base ?>login.php?redirect=<?= urlencode($current_page) ?>" class="login-link">تسجيل الدخول</a>
+        <?php endif; ?>
+      </div>
+    </div>
+
+    <!-- القوائم الرئيسية في المنتصف -->
+    <div class="nav-center">
+      <ul class="nav-links">
+        <li><a href="<?= $base ?>index.php" <?php if(basename($_SERVER['PHP_SELF'])=='index.php') echo 'class="active"'; ?>>الرئيسية</a></li>
+
+        <!-- الفئات -->
+        <li class="dropdown">
+          <a href="#" class="dropbtn">الفئات <span class="arrow">▼</span></a>
+          <ul class="dropdown-menu">
+            <li><a href="<?= $base ?>products.php?cat=نساء">نساء</a></li>
+            <li><a href="<?= $base ?>products.php?cat=رجالي">رجالي</a></li>
+            <li><a href="<?= $base ?>products.php?cat=أطفال">أطفال</a></li>
+            <li><a href="<?= $base ?>products.php?cat=أثاث">أثاث</a></li>
+            <li><a href="<?= $base ?>products.php?cat=إكسسوارات">إكسسوارات</a></li>
+            <li><a href="<?= $base ?>courses.php">كورسات تعليمية</a></li>
+          </ul>
+        </li>
+
+        <li><a href="<?= $base ?>gift_assistant.php" <?php if(basename($_SERVER['PHP_SELF'])=='gift_assistant.php') echo 'class="active"'; ?>>مساعد الهدية</a></li>
+        <li><a href="<?= $base ?>random_product.php" <?php if(basename($_SERVER['PHP_SELF'])=='random_product.php') echo 'class="active"'; ?>>منتج عشوائي</a></li>
+
+        <li><a href="<?= $base ?>about.php" <?php if(basename($_SERVER['PHP_SELF'])=='about.php') echo 'class="active"'; ?>>حول</a></li>
+        <li><a href="<?= $base ?>contact.php" <?php if(basename($_SERVER['PHP_SELF'])=='contact.php') echo 'class="active"'; ?>>الاتصال</a></li>
+      </ul>
+    </div>
+
+    <!-- اللوجو في أقصى اليمين -->
+    <a href="<?= $base ?>index.php" class="logo-link">
+      <img src="<?= $base ?>images/LOGO.png" alt="أيدي طيّبة" class="logo">
+    </a>
+
+  </div>
+</nav>
+
+<!-- لا نافذة جانبية ولا AJAX -->

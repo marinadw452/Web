@@ -1,0 +1,48 @@
+<?php
+$base = '';
+if (isset($_SERVER['SCRIPT_NAME']) && preg_match('#/(seller|admin)/#', $_SERVER['SCRIPT_NAME'])) {
+  $base = '../';
+}
+?>
+
+<footer style="background: linear-gradient(135deg, #3e2723, #5d4037); color: white; padding: 60px 20px 30px; margin-top: 80px;">
+  <div style="max-width: 1200px; margin: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 40px;">
+    
+    <div>
+      <h3 style="color: #ffb74d; margin-bottom: 20px; font-size: 1.5rem;">أيدي طيّبة</h3>
+      <p style="line-height: 1.8; color: #d7ccc8;">منصة إلكترونية سعودية لدعم الحرفيين والصناع التقليديين، نوفر منتجات يدوية أصيلة بجودة عالية.</p>
+    </div>
+    
+    <div>
+      <h4 style="color: #ffb74d; margin-bottom: 20px;">روابط سريعة</h4>
+      <ul style="list-style: none; padding: 0;">
+        <li style="margin: 10px 0;"><a href="<?= $base ?>index.php" style="color: #d7ccc8; text-decoration: none; transition: color 0.3s;">الرئيسية</a></li>
+        <li style="margin: 10px 0;"><a href="<?= $base ?>products.php" style="color: #d7ccc8; text-decoration: none; transition: color 0.3s;">المنتجات</a></li>
+        <li style="margin: 10px 0;"><a href="<?= $base ?>about.php" style="color: #d7ccc8; text-decoration: none; transition: color 0.3s;">حول</a></li>
+        <li style="margin: 10px 0;"><a href="<?= $base ?>contact.php" style="color: #d7ccc8; text-decoration: none; transition: color 0.3s;">تواصل معنا</a></li>
+      </ul>
+    </div>
+    
+    <div>
+      <h4 style="color: #ffb74d; margin-bottom: 20px;">تواصل معنا</h4>
+      <p style="margin: 12px 0; color: #d7ccc8;">📧 info@ayditayyiba.sa</p>
+      <p style="margin: 12px 0; color: #d7ccc8;">📱 +966 50 123 4567</p>
+      <p style="margin: 12px 0; color: #d7ccc8;">📍 المدينة المنورة، المملكة العربية السعودية</p>
+    </div>
+  </div>
+  
+  <div style="text-align: center; margin-top: 50px; padding-top: 30px; border-top: 1px solid rgba(255, 183, 77, 0.3);">
+    <p style="color: #d7ccc8;">© 2024 أيدي طيّبة. جميع الحقوق محفوظة.</p>
+  </div>
+</footer>
+
+<style>
+footer a:hover {
+  color: #ffb74d !important;
+}
+</style>
+
+<script src="<?= $base ?>assets/js/cart.js"></script>
+<script src="<?= $base ?>script.js"></script>
+</body>
+</html>
